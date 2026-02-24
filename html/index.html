@@ -103,11 +103,16 @@
     const Logger = {
       format(level, message, meta) {
         const timestamp = new Date().toISOString();
+
+        const safeMeta = meta
+          ? `<pre>${JSON.stringify(meta, null, 2)}</pre>`
+          : "";
+
         return {
           html: `<div class="log-${level}">
-                ${timestamp} [${level.toUpperCase()}] ${message}
-                ${meta ? `<pre>${JSON.stringify(meta, null, 2)}</pre>` : ""}
-              </div>`
+      ${timestamp} [${level.toUpperCase()}] ${message}
+      ${safeMeta}
+    </div>`
         };
       },
 
@@ -137,37 +142,63 @@
     // Centralized API Wrapper
     // -----------------------------
     async function apiRequest(endpoint, body) {
-      try {
-        Logger.info(`API → ${endpoint}`, body);
+      const startTime = performance.now();
 
-        const res = await fetch(`${API_BASE}${endpoint}`, {
+      try {
+        Logger.info(`API REQUEST → ${endpoint}`, {
+          method: "POST",
+          url: `${API_BASE}${endpoint}`,
+          body
+        });
+
+        const response = await fetch(`${API_BASE}${endpoint}`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(body)
         });
 
-        const text = await res.text();
-        let data;
+        const duration = Math.round(performance.now() - startTime);
+
+        const rawText = await response.text();
+        let parsed;
 
         try {
-          data = JSON.parse(text);
+          parsed = JSON.parse(rawText);
         } catch {
-          data = text;
+          parsed = rawText;
         }
 
-        if (!res.ok) {
-          Logger.error(`API ${res.status}`, data);
-          throw new Error(text);
+        // 🔹 Log full API response
+        Logger.info(`API RESPONSE ← ${endpoint}`, {
+          status: response.status,
+          ok: response.ok,
+          durationMs: duration,
+          data: parsed
+        });
+
+        if (!response.ok) {
+          Logger.error(`API ERROR ${response.status}`, {
+            endpoint,
+            durationMs: duration,
+            response: parsed
+          });
+          throw new Error(typeof parsed === "string" ? parsed : JSON.stringify(parsed));
         }
 
-        return data;
+        return parsed;
 
       } catch (err) {
-        Logger.error("Network/API failure", { message: err.message });
+        const duration = Math.round(performance.now() - startTime);
+
+        Logger.error("NETWORK/API FAILURE", {
+          endpoint,
+          durationMs: duration,
+          message: err.message
+        });
+
         throw err;
       }
     }
-
     // -----------------------------
     // Uppy Setup
     // -----------------------------
