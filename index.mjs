@@ -10,7 +10,7 @@ import {
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 
 const REGION = process.env.AWS_REGION;
-
+const MAX_FILE_SIZE = 50 * 1024 * 1024;
 const MRAP_ARN =
   "arn:aws:s3::978902358863:accesspoint/mhm5yi1qoc9yy.mrap";
 
@@ -31,8 +31,16 @@ export const handler = async (event) => {
     if (path.endsWith("/create")) {
       const { fileName, contentType } = body;
 
-      if (!fileName) {
-        return response(400, { message: "fileName is required" });
+      if (!fileName || !fileSize) {
+        return response(400, {
+          message: "fileName and fileSize are required",
+        });
+      }
+
+      if (fileSize > MAX_FILE_SIZE) {
+        return response(400, {
+          message: "File exceeds maximum allowed size (50MB)",
+        });
       }
 
       const command = new CreateMultipartUploadCommand({
@@ -166,7 +174,7 @@ function response(statusCode, body) {
     statusCode,
     headers: {
       "Content-Type": "application/json",
-      "Access-Control-Allow-Origin": "*",
+      "Access-Control-Allow-Origin": "https://aarakshit.com",
       "Access-Control-Allow-Headers": "Content-Type",
       "Access-Control-Allow-Methods": "OPTIONS,POST",
     },
