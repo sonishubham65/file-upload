@@ -1,13 +1,11 @@
 <!DOCTYPE html>
 <html>
+
 <head>
   <meta charset="UTF-8" />
   <title>MRAP Multipart Upload</title>
 
-  <!-- Google Font -->
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
-
-  <!-- Uppy CSS -->
   <link href="https://releases.transloadit.com/uppy/v3.25.0/uppy.min.css" rel="stylesheet">
 
   <style>
@@ -26,13 +24,7 @@
       width: 850px;
       border-radius: 16px;
       padding: 40px;
-      box-shadow: 0 25px 50px rgba(0,0,0,0.15);
-    }
-
-    h2 {
-      margin-top: 0;
-      font-weight: 600;
-      color: #333;
+      box-shadow: 0 25px 50px rgba(0, 0, 0, 0.15);
     }
 
     .actions {
@@ -47,7 +39,6 @@
       border: none;
       cursor: pointer;
       font-weight: 500;
-      transition: all 0.2s ease;
     }
 
     .btn-primary {
@@ -55,147 +46,247 @@
       color: white;
     }
 
-    .btn-primary:hover {
-      background: #4338ca;
-    }
-
     .btn-secondary {
       background: #e5e7eb;
-      color: #333;
     }
 
-    .btn-secondary:hover {
-      background: #d1d5db;
-    }
-
-    .footer-note {
+    .log-box {
       margin-top: 20px;
-      font-size: 13px;
-      color: #777;
+      max-height: 180px;
+      overflow-y: auto;
+      background: #111;
+      padding: 12px;
+      font-size: 12px;
+      border-radius: 8px;
+      font-family: monospace;
+    }
+
+    .log-info {
+      color: #0ea5e9;
+    }
+
+    .log-success {
+      color: #22c55e;
+    }
+
+    .log-error {
+      color: #ef4444;
     }
   </style>
 </head>
 
 <body>
 
-<div class="card">
-  <h2>Global File Upload (MRAP + Multipart)</h2>
+  <div class="card">
+    <h2>Global File Upload (MRAP + Multipart)</h2>
 
-  <div id="uppy"></div>
+    <div id="uppy"></div>
 
-  <div class="actions">
-    <button class="btn btn-secondary" onclick="pauseUpload()">Pause</button>
-    <button class="btn btn-secondary" onclick="resumeUpload()">Resume</button>
-    <button class="btn btn-primary" onclick="retryUpload()">Retry Failed</button>
+    <div class="actions">
+      <button class="btn btn-secondary" onclick="pauseUpload()">Pause</button>
+      <button class="btn btn-secondary" onclick="resumeUpload()">Resume</button>
+      <button class="btn btn-primary" onclick="retryUpload()">Retry Failed</button>
+    </div>
+
+    <div class="log-box" id="logs"></div>
   </div>
 
-  <div class="footer-note">
-    Upload is routed automatically to nearest healthy region.
-  </div>
-</div>
+  <script src="https://releases.transloadit.com/uppy/v3.25.0/uppy.min.js"></script>
 
-<script src="https://releases.transloadit.com/uppy/v3.25.0/uppy.min.js"></script>
+  <script>
+    const API_BASE = "https://aarakshit.com/storage";
+    const logBox = document.getElementById("logs");
 
-<script>
-  const API_BASE =
-    "https://xxxx.execute-api.ap-south-1.amazonaws.com/prod";
+    // -----------------------------
+    // Structured Logger
+    // -----------------------------
+    const Logger = {
+      format(level, message, meta) {
+        const timestamp = new Date().toISOString();
+        return {
+          html: `<div class="log-${level}">
+                ${timestamp} [${level.toUpperCase()}] ${message}
+                ${meta ? `<pre>${JSON.stringify(meta, null, 2)}</pre>` : ""}
+              </div>`
+        };
+      },
 
-  const uppy = new Uppy.Uppy({
-    debug: true,
-    autoProceed: false
-  });
+      info(message, meta) {
+        console.log(message, meta || "");
+        const log = this.format("info", message, meta);
+        logBox.innerHTML += log.html;
+        logBox.scrollTop = logBox.scrollHeight;
+      },
 
-  uppy.use(Uppy.Dashboard, {
-    inline: true,
-    target: '#uppy',
-    proudlyDisplayPoweredByUppy: false,
-    height: 400,
-    showProgressDetails: true
-  });
+      success(message, meta) {
+        console.log(message, meta || "");
+        const log = this.format("success", message, meta);
+        logBox.innerHTML += log.html;
+        logBox.scrollTop = logBox.scrollHeight;
+      },
 
-  uppy.use(Uppy.AwsS3Multipart, {
+      error(message, meta) {
+        console.error(message, meta || "");
+        const log = this.format("error", message, meta);
+        logBox.innerHTML += log.html;
+        logBox.scrollTop = logBox.scrollHeight;
+      }
+    };
 
-    createMultipartUpload: async (file) => {
-      const res = await fetch(`${API_BASE}/create`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
+    // -----------------------------
+    // Centralized API Wrapper
+    // -----------------------------
+    async function apiRequest(endpoint, body) {
+      try {
+        Logger.info(`API → ${endpoint}`, body);
+
+        const res = await fetch(`${API_BASE}${endpoint}`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body)
+        });
+
+        const text = await res.text();
+        let data;
+
+        try {
+          data = JSON.parse(text);
+        } catch {
+          data = text;
+        }
+
+        if (!res.ok) {
+          Logger.error(`API ${res.status}`, data);
+          throw new Error(text);
+        }
+
+        return data;
+
+      } catch (err) {
+        Logger.error("Network/API failure", { message: err.message });
+        throw err;
+      }
+    }
+
+    // -----------------------------
+    // Uppy Setup
+    // -----------------------------
+    const uppy = new Uppy.Uppy({
+      debug: true,
+      autoProceed: false
+    });
+
+    uppy.use(Uppy.Dashboard, {
+      inline: true,
+      target: '#uppy',
+      proudlyDisplayPoweredByUppy: false,
+      height: 400,
+      showProgressDetails: true
+    });
+
+    // -----------------------------
+    // S3 Chunk-Level Logging
+    // -----------------------------
+
+    // Logs upload progress per file
+    uppy.on('upload-progress', (file, progress) => {
+      Logger.info(`Uploading ${file.name}`, {
+        bytesUploaded: progress.bytesUploaded,
+        bytesTotal: progress.bytesTotal,
+        percentage: Math.round((progress.bytesUploaded / progress.bytesTotal) * 100)
+      });
+    });
+
+    // Logs successful chunk upload (per part)
+    uppy.on('chunk-uploaded', (file, chunk) => {
+      Logger.success(`S3 Part Uploaded`, {
+        file: file.name,
+        partNumber: chunk.partNumber,
+        etag: chunk.response?.headers?.etag
+      });
+    });
+
+    // Logs file upload success
+    uppy.on('upload-success', (file, response) => {
+      Logger.success(`File uploaded to S3`, {
+        file: file.name,
+        uploadURL: response.uploadURL
+      });
+    });
+
+    // Logs retries
+    uppy.on('retry', (fileID) => {
+      const file = uppy.getFile(fileID);
+      Logger.info(`Retry triggered`, {
+        file: file?.name
+      });
+    });
+
+    uppy.use(Uppy.AwsS3Multipart, {
+
+      async createMultipartUpload(file) {
+        Logger.info("Creating multipart upload", { file: file.name });
+        return await apiRequest("/create", {
           fileName: file.name,
           contentType: file.type
-        })
+        });
+      },
+
+      async signPart(file, { uploadId, key, partNumber }) {
+        Logger.info(`Signing part ${partNumber}`, { key });
+        const data = await apiRequest("/part", {
+          uploadId, key, partNumber
+        });
+        return { url: data.signedUrl };
+      },
+
+      async listParts(file, { uploadId, key }) {
+        Logger.info("Listing parts", { key });
+        const data = await apiRequest("/list-parts", {
+          uploadId, key
+        });
+        return data.parts;
+      },
+
+      async completeMultipartUpload(file, { uploadId, key, parts }) {
+        Logger.info("Completing upload", { key });
+        await apiRequest("/complete", {
+          uploadId, key, parts
+        });
+        Logger.success("Upload completed successfully", { key });
+        return { location: key };
+      },
+
+      async abortMultipartUpload(file, { uploadId, key }) {
+        Logger.error("Aborting upload", { key });
+        await apiRequest("/abort", { uploadId, key });
+      },
+
+      limit: 5
+    });
+
+    // -----------------------------
+    // Uppy Events
+    // -----------------------------
+    uppy.on('upload-error', (file, error, response) => {
+      Logger.error(`Upload failed for ${file.name}`, {
+        message: error.message,
+        response
       });
+    });
 
-      return await res.json();
-    },
-
-    signPart: async (file, { uploadId, key, partNumber }) => {
-      const res = await fetch(`${API_BASE}/part`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          uploadId,
-          key,
-          partNumber
-        })
+    uppy.on('complete', (result) => {
+      Logger.success(`Upload successful`, {
+        successfulFiles: result.successful.length
       });
+    });
 
-      const data = await res.json();
-      return { url: data.signedUrl };
-    },
+    function pauseUpload() { uppy.pauseAll(); }
+    function resumeUpload() { uppy.resumeAll(); }
+    function retryUpload() { uppy.retryAll(); }
 
-    listParts: async (file, { uploadId, key }) => {
-      const res = await fetch(`${API_BASE}/list-parts`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ uploadId, key })
-      });
-
-      const data = await res.json();
-      return data.parts;
-    },
-
-    completeMultipartUpload: async (file, { uploadId, key, parts }) => {
-      await fetch(`${API_BASE}/complete`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          uploadId,
-          key,
-          parts
-        })
-      });
-
-      return { location: key };
-    },
-
-    abortMultipartUpload: async (file, { uploadId, key }) => {
-      await fetch(`${API_BASE}/abort`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ uploadId, key })
-      });
-    },
-
-    limit: 5
-  });
-
-  function pauseUpload() {
-    uppy.pauseAll();
-  }
-
-  function resumeUpload() {
-    uppy.resumeAll();
-  }
-
-  function retryUpload() {
-    uppy.retryAll();
-  }
-
-  uppy.on("complete", (result) => {
-    console.log("Upload complete:", result);
-  });
-
-</script>
+  </script>
 
 </body>
+
 </html>
