@@ -12,7 +12,7 @@ import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 const REGION = process.env.AWS_REGION;
 
 const MRAP_ARN =
-  "arn:aws:s3::xxxx:accesspoint/xxx.mrap";
+  "arn:aws:s3::978902358863:accesspoint/mhm5yi1qoc9yy.mrap";
 
 const s3Client = new S3Client({
   region: REGION,
@@ -21,6 +21,7 @@ const s3Client = new S3Client({
 
 export const handler = async (event) => {
   try {
+    console.log(`event: ${JSON.stringify(event)}`);
     const path = event.rawPath || event.path;
     const body = event.body ? JSON.parse(event.body) : {};
 
@@ -45,6 +46,7 @@ export const handler = async (event) => {
       return response(200, {
         uploadId: result.UploadId,
         key: result.Key,
+        region: REGION,
       });
     }
 
