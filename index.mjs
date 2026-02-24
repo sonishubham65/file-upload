@@ -16,7 +16,7 @@ const MRAP_ARN =
 
 const s3Client = new S3Client({
   region: REGION,
-  useArnRegion: true,
+  useArnRegion: false,
 });
 
 export const handler = async (event) => {
