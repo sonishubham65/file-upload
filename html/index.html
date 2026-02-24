@@ -95,6 +95,7 @@
 
   <script>
     const API_BASE = "https://aarakshit.com/storage-api";
+    const MAX_FILE_SIZE = 50 * 1024 * 1024; // 50MB
     const logBox = document.getElementById("logs");
 
     // -----------------------------
@@ -215,6 +216,17 @@
       showProgressDetails: true
     });
 
+    uppy.on('file-added', (file) => {
+      if (file.size > MAX_FILE_SIZE) {
+        Logger.error("File exceeds 50MB limit", {
+          file: file.name,
+          size: file.size
+        });
+
+        uppy.removeFile(file.id);
+      }
+    });
+
     // -----------------------------
     // S3 Chunk-Level Logging
     // -----------------------------
@@ -259,7 +271,8 @@
         Logger.info("Creating multipart upload", { file: file.name });
         return await apiRequest("/create", {
           fileName: file.name,
-          contentType: file.type
+          contentType: file.type,
+          fileSize: file.size
         });
       },
 
