@@ -11,8 +11,8 @@ import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 
 const REGION = process.env.AWS_REGION;
 const MAX_FILE_SIZE = 50 * 1024 * 1024;
-const MRAP_ARN =
-  "arn:aws:s3::978902358863:accesspoint/mhm5yi1qoc9yy.mrap";
+const MRAP_ARN = "ss-ap-south-1-multi-region-storage-service"; // regional s3 bucket name
+// arn:aws:s3::978902358863:accesspoint/mhm5yi1qoc9yy.mrap, unable to use this mrap endpoint for multipart
 
 const s3Client = new S3Client({
   region: REGION,
